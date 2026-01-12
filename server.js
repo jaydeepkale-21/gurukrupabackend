@@ -128,7 +128,11 @@ app.get('/franchises', authenticateToken, async (req, res) => {
     snapshot.forEach(doc => {
       const data = doc.data();
       delete data.password; // remove sensitive info
-      franchises.push({ id: doc.id, ...data });
+      franchises.push({
+        id: doc.id,
+        ...data,
+        agreementEndDate: data.agreementEndDate && data.agreementEndDate.toDate ? data.agreementEndDate.toDate().toISOString() : data.agreementEndDate
+      });
     });
     res.json(franchises);
   } catch (e) {
