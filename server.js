@@ -111,7 +111,7 @@ app.post('/auth/login', async (req, res) => {
         role: user.role,
         franchise_id: user.franchiseId,
         token: token,
-        agreementEndDate: user.agreementEndDate
+        agreementEndDate: user.agreementEndDate && user.agreementEndDate.toDate ? user.agreementEndDate.toDate().toISOString() : user.agreementEndDate
       }
     });
   } catch (e) {
