@@ -1,14 +1,17 @@
 const admin = require('firebase-admin');
+const bcrypt = require('bcryptjs'); // Import bcrypt
 const serviceAccount = require('./serviceAccountKey.json');
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 
 async function seed() {
+    const hashedPassword = await bcrypt.hash('123456', 10); // Hash '123456'
+
     // Users
     const usersRef = db.collection('users');
     await usersRef.doc('manager').set({
         email: 'manager@gurupra.com',
-        password: '$2a$10$examplehashedpassword', // placeholder bcrypt hash
+        password: hashedPassword,
         role: 'warehouse_manager',
         franchiseId: null,
         outletName: null,
@@ -17,7 +20,7 @@ async function seed() {
     });
     await usersRef.doc('franchise1').set({
         email: 'franchise@gurupra.com',
-        password: '$2a$10$examplehashedpassword',
+        password: hashedPassword,
         role: 'franchise_owner',
         franchiseId: 101,
         outletName: 'Mumbai Central',
