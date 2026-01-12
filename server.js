@@ -140,11 +140,49 @@ app.get('/franchises', authenticateToken, async (req, res) => {
   }
 });
 
-// 3. Products list
+// 3. Products list (All)
 app.get('/products', authenticateToken, async (req, res) => {
   try {
     const products = await getAllProducts();
     res.json(products);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 3a. Active Products (for Franchise)
+app.get('/products/active', authenticateToken, async (req, res) => {
+  try {
+    const products = await getAllProducts();
+    // Return products that are NOT explicitly inactive
+    const activeProducts = products.filter(p => p.isActive !== false);
+    res.json(activeProducts);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 3b. Franchise Agreement Status
+app.get('/franchise/agreement', authenticateToken, async (req, res) => {
+  if (req.user.role !== 'franchise_owner') return res.sendStatus(403);
+  try {
+    const user = await getUserById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    // Handle Firestore Timestamp or Date object
+    const toDate = (ts) => ts && ts.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+
+    const start = toDate(user.agreementStartDate);
+    const end = toDate(user.agreementEndDate);
+    const now = new Date();
+
+    const status = (!end || end < now) ? 'Expired' : 'Active';
+
+    res.json({
+      startDate: start ? start.toISOString() : null,
+      endDate: end ? end.toISOString() : null,
+      status: status
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -297,30 +335,50 @@ app.post('/orders', authenticateToken, async (req, res) => {
     const user = await getUserById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
     if (user.role === 'franchise_owner') {
-      if (!user.agreementEndDate || new Date(user.agreementEndDate) < new Date()) {
+      const toDate = (ts) => ts && ts.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+      const endDate = toDate(user.agreementEndDate);
+      if (!endDate || endDate < new Date()) {
         return res.status(403).json({ message: 'Agreement Expired. Cannot place order.' });
       }
     }
-    const { items } = req.body;
+    const { items } = req.body; // items: { productId: qty, ... }
     if (!items || Object.keys(items).length === 0) {
       return res.status(400).json({ message: 'Order must contain at least one item.' });
     }
+
     let totalAmount = 0;
     let itemsCount = 0;
     const itemNames = [];
+    const lineItems = [];
+
     for (const [productId, qty] of Object.entries(items)) {
+      if (qty <= 0) continue;
       const prodSnap = await productsRef.where('id', '==', Number(productId)).limit(1).get();
       if (!prodSnap.empty) {
         const prod = prodSnap.docs[0].data();
-        totalAmount += prod.basePrice * qty;
+        const lineTotal = prod.basePrice * qty;
+        totalAmount += lineTotal;
         itemsCount++;
-        itemNames.push(prod.name);
+        itemNames.push(`${prod.name} x${qty}`);
+
+        // Lock Price Logic
+        lineItems.push({
+          productId: prod.id,
+          name: prod.name,
+          unit: prod.unit,
+          quantity: Number(qty),
+          unitPrice: prod.basePrice, // LOCKED HERE
+          totalPrice: lineTotal
+        });
       }
     }
+
     let itemsSummary = itemNames.join(', ');
     if (itemsSummary.length > 35) itemsSummary = itemsSummary.substring(0, 32) + '...';
+
     const lastSnap = await ordersRef.orderBy('id', 'desc').limit(1).get();
     const nextId = lastSnap.empty ? 1001 : (lastSnap.docs[0].data().id + 1);
+
     const newOrder = {
       id: nextId,
       date: new Date().toISOString().substring(0, 16),
@@ -328,10 +386,12 @@ app.post('/orders', authenticateToken, async (req, res) => {
       totalAmount,
       itemsCount,
       itemsSummary,
-      items,
+      items, // Keep for backward compatibility if needed
+      lineItems, // New robust structure
       franchiseId: user.franchiseId,
       outletName: user.outletName || 'Franchise Outlet'
     };
+
     await ordersRef.add(newOrder);
     res.json({ success: true, order: newOrder });
   } catch (e) {
