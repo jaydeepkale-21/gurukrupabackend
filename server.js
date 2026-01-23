@@ -14,7 +14,27 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 // Initialize Firebase Admin SDK
 const admin = require('firebase-admin');
-const serviceAccount = require('./serviceAccountKey.json');
+
+let serviceAccount;
+try {
+  // Try local file first
+  serviceAccount = require('./serviceAccountKey.json');
+} catch (e) {
+  // If file missing, look for Environment Variable (for Render)
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    } catch (parseError) {
+      console.error('Error parsing FIREBASE_SERVICE_ACCOUNT env var:', parseError);
+    }
+  }
+}
+
+if (!serviceAccount) {
+  console.error('CRITICAL: serviceAccountKey.json not found and FIREBASE_SERVICE_ACCOUNT environment variable is not set.');
+  process.exit(1);
+}
+
 admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
 
