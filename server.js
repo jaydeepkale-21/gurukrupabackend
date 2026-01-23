@@ -1,4 +1,5 @@
 const express = require('express');
+// Logic updated for Render deployment
 const cors = require('cors');
 // const mongoose = require('mongoose'); // Removed MongoDB
 const path = require('path');
